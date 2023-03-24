@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "FS.h"
 #include "SPIFFS.h"
+#include <Arduino_CRC32.h>
 
 #include <vector>
 #include <algorithm>
@@ -28,6 +29,7 @@
 static constexpr long BROADCAST_MAC = 281474976710655;
 char* FILENAME = "/crowd_count.txt";
 std::unordered_map<long, std::pair<int, int>> mac_to_rssi_and_count_hash_table;
+Arduino_CRC32 crc32;
 
 
 // WIFI SNIFFER FUNCTIONS //
@@ -121,7 +123,6 @@ void process_macs(long mac_dest, long mac_src, int _rssi) {
 
   if (mac_dest != BROADCAST_MAC) return;
   if (mac_src == BROADCAST_MAC) return;
-//  if (crc_invalid) return;
 
   if (auto search = mac_to_rssi_and_count_hash_table.find(mac_src); search != mac_to_rssi_and_count_hash_table.end()) {
     int count = mac_to_rssi_and_count_hash_table[mac_src].second; // this is the counter for this mac_src
@@ -181,8 +182,10 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
   snprintf(macs[1], sizeof(macs[1]), "%02x%02x%02x%02x%02x%02x", hdr->addr1[0], hdr->addr1[1], hdr->addr1[2], hdr->addr1[3], hdr->addr1[4], hdr->addr1[5]);
   snprintf(macs[0], sizeof(macs[0]), "%02x%02x%02x%02x%02x%02x", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 
+  if (!ipkt || !check_crc(*ipkt))
+    return;
 
-  process_macs(std::stol(macs[0], NULL, 16), std::stol(macs[1], NULL, 16), _rssi );
+  process_macs(std::stol(macs[0], NULL, 16), std::stol(macs[1], NULL, 16), _rssi);
 
   if (mac_to_rssi_and_count_hash_table.size() > BATCH_SIZE) {
     //  print_vector();
@@ -199,6 +202,19 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
     }
     check_if_deduplication_needed();
   }
+}
+
+int check_crc(const wifi_ieee80211_packet_t& packet) {
+  const uint8_t* payload = packet.payload;
+  const int payload_len = sizeof(payload);
+  // Extract the CRC value from the packet
+  const uint32_t extracted_crc = *((uint32_t*)&payload[payload_len - 4]);
+
+  // Calculate the CRC value for the rest of the packet
+  const uint32_t calculated_crc = crc32.calc(&payload[0], payload_len - 4);
+
+  // Compare the extracted CRC with the calculated CRC
+  return (extracted_crc == calculated_crc);
 }
 
 int forced_writing() {
