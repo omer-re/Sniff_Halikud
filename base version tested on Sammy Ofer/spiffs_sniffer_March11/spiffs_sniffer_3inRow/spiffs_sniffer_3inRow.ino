@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <string>
 #include <map>
+#include <unordered_map>
 
 #define LED_GPIO_PIN                     5
 #define WIFI_CHANNEL_SWITCH_INTERVAL  (500)
@@ -24,9 +25,9 @@
 
 #define LED_BUILTIN 2
 
-
+static constexpr long BROADCAST_MAC = 281474976710655;
 char* FILENAME = "/crowd_count.txt";
-std::vector<String> strVector;
+std::unordered_map<long, std::pair<int, int>> mac_to_rssi_and_count_hash_table;
 
 
 // WIFI SNIFFER FUNCTIONS //
@@ -90,52 +91,53 @@ void check_if_deduplication_needed() {
 
   }
 }
-void remove_duplicates() {
-
-  // Sort the vector to make duplicates adjacent
-  std::sort(strVector.begin(), strVector.end());
-
-  // Use std::unique() to remove duplicates
-  auto last = std::unique(strVector.begin(), strVector.end());
-  strVector.erase(last, strVector.end());
-  dup_remover_calls++;
-  //  // Print the unique strings
-  //  for (auto str : strVector) {
-  //    Serial.println(str);
-  //  }
-}
+//void remove_duplicates() {
+//
+//  // Sort the vector to make duplicates adjacent
+//  std::sort(strVector.begin(), strVector.end());
+//
+//  // Use std::unique() to remove duplicates
+//  auto last = std::unique(strVector.begin(), strVector.end());
+//  strVector.erase(last, strVector.end());
+//  dup_remover_calls++;
+//  //  // Print the unique strings
+//  //  for (auto str : strVector) {
+//  //    Serial.println(str);
+//  //  }
+//}
 
 void print_vector() {
-  Serial.println("Vector contains: ");
+  Serial.println("Hash table contains src addresses: ");
   // Print the vector
-  for (auto i : strVector) {
-    Serial.println(i);
+  for (auto iter = mac_to_rssi_and_count_hash_table.begin(); iter != mac_to_rssi_and_count_hash_table.end(); ++iter) {
+    Serial.println(iter->first);
   }
-  Serial.println(strVector.size());
+  Serial.println(("total is %d addresses", mac_to_rssi_and_count_hash_table.size()));
 
 }
 
-void process_strings(String str1, String str2, int _rssi) {
+void process_macs(long mac_dest, long mac_src, int _rssi) {
   if (_rssi < (RSSI_TH)) return;
-  const String empty_mac = "000";
-  const String ignored_mac = "ffffffffffff";
 
-  if (str1 == ignored_mac) str1 = empty_mac;
-  if (str2 == ignored_mac) str2 = empty_mac;
+  if (mac_dest != BROADCAST_MAC) return;
+  if (mac_src == BROADCAST_MAC) return;
+//  if (crc_invalid) return;
 
-  if (str1 == str2) str2 = empty_mac;
-
-  String macs_row = str1 + "," + str2 + ":" + _rssi;
-
-  strVector.push_back(macs_row);
+  if (auto search = mac_to_rssi_and_count_hash_table.find(mac_src); search != mac_to_rssi_and_count_hash_table.end()) {
+    int count = mac_to_rssi_and_count_hash_table[mac_src].second; // this is the counter for this mac_src
+    int best_rssi = mac_to_rssi_and_count_hash_table[mac_src].first;
+    mac_to_rssi_and_count_hash_table[mac_src] = {max(_rssi, best_rssi), count+1};
+  } else {
+    mac_to_rssi_and_count_hash_table[mac_src] = {_rssi, 1};
+  }
 
 }
 
 
-String vector_to_paragraph() {
+String hash_table_to_paragraph() {
   String paragraph;
-  for (auto str : strVector) {
-    paragraph += str + "\n";
+  for (auto iter = mac_to_rssi_and_count_hash_table.begin(); iter != mac_to_rssi_and_count_hash_table.end(); ++iter) {
+    paragraph += (String(iter->first) + ":" + String(iter->second.first) + "," + String(iter->second.second));
   }
   return paragraph;
   // Print the paragraph
@@ -180,20 +182,19 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
   snprintf(macs[0], sizeof(macs[0]), "%02x%02x%02x%02x%02x%02x", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 
 
-  process_strings(String(macs[0]), String(macs[1]), _rssi );
+  process_macs(std::stol(macs[0], NULL, 16), std::stol(macs[1], NULL, 16), _rssi );
 
-  remove_duplicates();
-  if (strVector.size() > BATCH_SIZE) {
+  if (mac_to_rssi_and_count_hash_table.size() > BATCH_SIZE) {
     //  print_vector();
-    String parag = vector_to_paragraph();
+    String parag = hash_table_to_paragraph();
     Serial.println("parag   ");
 
     Serial.println(parag);
     int res = appendFile(SPIFFS, FILENAME, parag.c_str());
     if (res == 0) {
       // writing succeeded, clear temp vector
-      strVector.clear();
-      Serial.println("strVector cleared");
+      mac_to_rssi_and_count_hash_table.clear();
+      Serial.println("hash table cleared");
 
     }
     check_if_deduplication_needed();
@@ -201,18 +202,18 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
 }
 
 int forced_writing() {
-  remove_duplicates();
+//  remove_duplicates();
 
   //  print_vector();
-  String parag = vector_to_paragraph();
+  String parag = hash_table_to_paragraph();
   Serial.println("parag   ");
 
   Serial.println(parag);
   int res = appendFile(SPIFFS, FILENAME, parag.c_str());
   if (res == 0) {
     // writing succeeded, clear temp vector
-    strVector.clear();
-    Serial.println("strVector cleared");
+    mac_to_rssi_and_count_hash_table.clear();
+    Serial.println("hash table cleared");
     return 0;
   }
   return -1;
@@ -603,7 +604,7 @@ void loop() {
     }
     if (input == "vecs") {
       // Print current temp vector's size
-      Serial.print("current temp vector's size:  "); Serial.println(strVector.size());
+      Serial.print("current temp vector's size:  "); Serial.println(mac_to_rssi_and_count_hash_table.size());
       delay(3000);
 
     }
@@ -623,7 +624,7 @@ void loop() {
 
     }
     if (input == "stat") {
-      Serial.print("current temp vector's size:  "); Serial.println(strVector.size());
+      Serial.print("current temp vector's size:  "); Serial.println(mac_to_rssi_and_count_hash_table.size());
       read_counter(SPIFFS, FILENAME);
       Serial.print("Percent free:  "); Serial.println(percent_full());
 
