@@ -137,7 +137,7 @@ void process_macs(long mac_dest, long mac_src, int _rssi) {
 String hash_table_to_paragraph() {
   String paragraph;
   for (auto iter = mac_to_rssi_and_count_hash_table.begin(); iter != mac_to_rssi_and_count_hash_table.end(); ++iter) {
-    paragraph += (String(iter->first) + ":" + String(iter->second.first) + "," + String(iter->second.second));
+    paragraph += (String(iter->first) + ":" + String(iter->second.first) + "," + String(iter->second.second)) + "\n";
   }
   return paragraph;
   // Print the paragraph
