@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <string>
 #include <map>
-#include <unordered_map>
 
 #define LED_GPIO_PIN                     5
 #define WIFI_CHANNEL_SWITCH_INTERVAL  (500)
@@ -28,7 +27,7 @@
 
 static constexpr long BROADCAST_MAC = 281474976710655;
 char* FILENAME = "/crowd_count.txt";
-std::unordered_map<long, std::pair<int, int>> mac_to_rssi_and_count_hash_table;
+std::map<long, std::pair<int, int>> mac_to_rssi_and_count_hash_table;
 Arduino_CRC32 crc32;
 
 
@@ -185,7 +184,7 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
   if (!ipkt || !check_crc(*ipkt))
     return;
 
-  process_macs(std::stol(macs[0], NULL, 16), std::stol(macs[1], NULL, 16), _rssi);
+  process_macs(std::strtol(macs[0], NULL, 16), std::strtol(macs[1], NULL, 16), _rssi);
 
   if (mac_to_rssi_and_count_hash_table.size() > BATCH_SIZE) {
     //  print_vector();
@@ -478,19 +477,19 @@ void deduplicate_file_by_rows() {
   file.close();
 
   // Process the lines and create a map to store the unique rows and their associated highest numbers.
-  std::map<String, int> dedupMap;
+  std::map<long, std::pair<int, int>> dedupMap;
   for (const String &line : lines) {
     int delimiterIndex = line.indexOf(':');
-    String key = line.substring(0, delimiterIndex);
-    int num = line.substring(delimiterIndex + 1).toInt();
+    int second_delimiterIndex = line.indexOf(',');
+    long key = line.substring(0, delimiterIndex).toInt();
+    int rssi = line.substring(delimiterIndex + 1, second_delimiterIndex).toInt();
+    int count = line.substring(second_delimiterIndex + 1).toInt();
 
     auto iter = dedupMap.find(key);
     if (iter == dedupMap.end()) {
-      dedupMap[key] = num;
+      dedupMap[key] = {rssi, count};
     } else {
-      if (num > iter->second) {
-        dedupMap[key] = num;
-      }
+      dedupMap[key] = {max(dedupMap[key].first, rssi), dedupMap[key].first + count};
     }
   }
   // Write the deduplicated rows back to the SPIFFS file.
@@ -501,7 +500,7 @@ void deduplicate_file_by_rows() {
   }
 
   for (const auto &entry : dedupMap) {
-    String line = entry.first + String(entry.second).substring(1);
+    String line = String(entry.first) + ":" + String(entry.second.first) + "," + String(entry.second.second);
     outFile.println(line);
   }
 
