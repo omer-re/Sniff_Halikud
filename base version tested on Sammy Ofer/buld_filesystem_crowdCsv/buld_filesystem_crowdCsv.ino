@@ -5,6 +5,7 @@
    test or else use the SPIFFS plugin to create a partition
    https://github.com/me-no-dev/arduino-esp32fs-plugin */
 #define FORMAT_SPIFFS_IF_FAILED true
+char* FILENAME = "/crowd_count.txt";
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\r\n", dirname);
@@ -165,7 +166,7 @@ void setup(){
     }
     
     listDir(SPIFFS, "/", 0);
-    writeFile(SPIFFS,"/crowd.csv", "Hello ");
+    writeFile(SPIFFS,FILENAME, "Hello ");
 
     Serial.println( "Test complete" );
 }
