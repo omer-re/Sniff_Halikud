@@ -122,7 +122,7 @@ void process_strings(String dest_mac, String src_mac, int _rssi) {
     if (_rssi < (RSSI_TH)) return;
     const String empty_mac = "000";
     const String ignored_mac = "ffffffffffff";
-    if (dest_mac == empty_mac) return; // ignore non broadcast
+    if (dest_mac != empty_mac) return; // ignore non broadcast
 
 
     if (dest_mac == ignored_mac) dest_mac = empty_mac;
