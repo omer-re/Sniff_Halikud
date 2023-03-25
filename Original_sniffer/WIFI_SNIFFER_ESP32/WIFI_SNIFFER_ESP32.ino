@@ -79,13 +79,15 @@ void wifi_sniffer_packet_handler(void* buff, wifi_promiscuous_pkt_type_t type)
   const wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)buff;
   const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)ppkt->payload;
   const wifi_ieee80211_mac_hdr_t *hdr = &ipkt->hdr;
+  uint32_t crc = ppkt->rx_ctrl.sig_mode ? ppkt->rx_ctrl.crc : 0;
 
-  printf("PACKET TYPE=%s, CHAN=%02d, RSSI=%02d,"
+  printf("PACKET TYPE=%s, CHAN=%02d, CRC=%d RSSI=%02d,"
     " ADDR1=%02x:%02x:%02x:%02x:%02x:%02x,"
     " ADDR2=%02x:%02x:%02x:%02x:%02x:%02x,"
     " ADDR3=%02x:%02x:%02x:%02x:%02x:%02x\n",
     wifi_sniffer_packet_type2str(type),
     ppkt->rx_ctrl.channel,
+    crc,
     ppkt->rx_ctrl.rssi,
     /* ADDR1 */
     hdr->addr1[0],hdr->addr1[1],hdr->addr1[2],
@@ -121,4 +123,3 @@ void loop() {
   wifi_sniffer_set_channel(channel);
   channel = (channel % WIFI_CHANNEL_MAX) + 1;
 }
-

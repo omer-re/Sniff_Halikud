@@ -164,8 +164,10 @@ void setup(){
         Serial.println("SPIFFS Mount Failed");
         return;
     }
-    
+
     listDir(SPIFFS, "/", 0);
+    deleteFile(SPIFFS,FILENAME);
+
     writeFile(SPIFFS,FILENAME, "Hello ");
 
     Serial.println( "Test complete" );
